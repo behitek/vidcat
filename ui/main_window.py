@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog
 from ui.video_list import VideoListWidget
 
 class MainWindow(QMainWindow):
@@ -42,3 +42,18 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(self.lbl_progress)
         layout.addWidget(self.start_btn)
+        
+        self.btn_outdir.clicked.connect(self.on_browse_outdir)
+        self.add_btn.clicked.connect(self.on_add_video)
+        
+    def on_browse_outdir(self):
+        directory = QFileDialog.getExistingDirectory(self, "Chọn thư mục xuất")
+        if directory:
+            self.lbl_outdir.setText(directory)
+            self.start_btn.setEnabled(True)
+            
+    def on_add_video(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "Chọn video", "", "Video files (*.mp4 *.mov *.avi *.mkv)")
+        if files:
+            for f in files:
+                self.video_list.add_video(f)
