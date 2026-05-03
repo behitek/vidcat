@@ -1,5 +1,5 @@
 import datetime
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication
 from ui.video_list import VideoListWidget
 from core.worker import ProcessingWorker
 
@@ -22,18 +22,28 @@ class MainWindow(QMainWindow):
         # Settings Panel
         self.chk_mute = QCheckBox("Tắt âm thanh")
         self.chk_mute.setChecked(True)
+        
+        group_layout = QHBoxLayout()
+        group_layout.addWidget(QLabel("Số video mỗi nhóm:"))
         self.spin_group = QSpinBox()
         self.spin_group.setRange(2, 10)
+        group_layout.addWidget(self.spin_group)
+        
         self.chk_watermark = QCheckBox("Xóa watermark")
         self.chk_watermark.setChecked(True)
+        
+        prefix_layout = QHBoxLayout()
+        prefix_layout.addWidget(QLabel("Tiền tố tên file:"))
         self.txt_prefix = QLineEdit("output")
+        prefix_layout.addWidget(self.txt_prefix)
+        
         self.lbl_outdir = QLabel("Chưa chọn thư mục")
         self.btn_outdir = QPushButton("Chọn thư mục xuất")
         
         layout.addWidget(self.chk_mute)
-        layout.addWidget(self.spin_group)
+        layout.addLayout(group_layout)
         layout.addWidget(self.chk_watermark)
-        layout.addWidget(self.txt_prefix)
+        layout.addLayout(prefix_layout)
         layout.addWidget(self.lbl_outdir)
         layout.addWidget(self.btn_outdir)
         
@@ -46,14 +56,26 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.start_btn)
         
         # Log Panel
+        self.btn_toggle_log = QPushButton("Hiện nhật ký ▼")
+        self.btn_toggle_log.setCheckable(True)
+        self.btn_toggle_log.clicked.connect(self.on_toggle_log)
+        
+        self.log_widget = QWidget()
+        log_layout = QVBoxLayout(self.log_widget)
+        log_layout.setContentsMargins(0, 0, 0, 0)
+        
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
         self.btn_copy_log = QPushButton("Sao chép nhật ký")
         self.btn_copy_log.clicked.connect(self.on_copy_log)
         
-        layout.addWidget(QLabel("Nhật ký (Logs):"))
-        layout.addWidget(self.txt_log)
-        layout.addWidget(self.btn_copy_log)
+        log_layout.addWidget(self.txt_log)
+        log_layout.addWidget(self.btn_copy_log)
+        
+        self.log_widget.setVisible(False)
+        
+        layout.addWidget(self.btn_toggle_log)
+        layout.addWidget(self.log_widget)
         
         self.btn_outdir.clicked.connect(self.on_browse_outdir)
         self.add_btn.clicked.connect(self.on_add_video)
@@ -76,6 +98,17 @@ class MainWindow(QMainWindow):
         tz = datetime.timezone(datetime.timedelta(hours=7))
         now = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
         self.txt_log.append(f"[{now}] {msg}")
+        
+        if "LỖI" in msg and not self.btn_toggle_log.isChecked():
+            self.btn_toggle_log.setChecked(True)
+            self.on_toggle_log(True)
+
+    def on_toggle_log(self, checked):
+        self.log_widget.setVisible(checked)
+        if checked:
+            self.btn_toggle_log.setText("Ẩn nhật ký ▲")
+        else:
+            self.btn_toggle_log.setText("Hiện nhật ký ▼")
 
     def on_copy_log(self):
         QApplication.clipboard().setText(self.txt_log.toPlainText())
