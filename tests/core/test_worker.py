@@ -11,7 +11,10 @@ def test_worker_groups(qtbot, mocker):
     
     mocker.patch('core.worker.normalize_video')
     mocker.patch('core.worker.concat_videos')
-    mocker.patch('ffmpeg.probe', return_value={'streams': [{'codec_type': 'video', 'width': 1280, 'height': 720}]})
+    mocker.patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='ffmpeg')
+    mock_run = mocker.MagicMock()
+    mock_run.stderr = "Stream #0:0: Video: h264, yuv420p, 1280x720, 30 fps"
+    mocker.patch('subprocess.run', return_value=mock_run)
     
     starts = []
     dones = []
@@ -29,7 +32,10 @@ def test_worker_pipeline(qtbot, mocker):
     
     mock_norm = mocker.patch('core.worker.normalize_video')
     mock_concat = mocker.patch('core.worker.concat_videos')
-    mocker.patch('ffmpeg.probe', return_value={'streams': [{'codec_type': 'video', 'width': 1280, 'height': 720}]})
+    mocker.patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='ffmpeg')
+    mock_run = mocker.MagicMock()
+    mock_run.stderr = "Stream #0:0: Video: h264, yuv420p, 1280x720, 30 fps"
+    mocker.patch('subprocess.run', return_value=mock_run)
     
     worker.run()
     

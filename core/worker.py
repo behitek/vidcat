@@ -2,6 +2,9 @@ import os
 import tempfile
 import shutil
 import ffmpeg
+import subprocess
+import re
+import imageio_ffmpeg
 from PyQt6.QtCore import QThread, pyqtSignal
 from core.ffmpeg_utils import normalize_video, concat_videos
 
@@ -44,11 +47,19 @@ class ProcessingWorker(QThread):
             
             try:
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    # 1. Get target resolution from first video
-                    probe = ffmpeg.probe(group[0])
-                    video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-                    target_w = int(video_stream['width'])
-                    target_h = int(video_stream['height'])
+                    # 1. Get target resolution from first video using ffmpeg
+                    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                    try:
+                        result = subprocess.run([ffmpeg_exe, "-i", group[0]], stderr=subprocess.PIPE, text=True)
+                        output = result.stderr
+                        # Find "Stream #...: Video: ... 1920x1080"
+                        match = re.search(r'Video:.*?\s(\d{3,4})x(\d{3,4})', output)
+                        if not match:
+                            raise ValueError("Could not determine video resolution")
+                        target_w = int(match.group(1))
+                        target_h = int(match.group(2))
+                    except Exception as e:
+                        raise ValueError(f"Failed to read resolution: {e}")
                     
                     processed_paths = []
                     

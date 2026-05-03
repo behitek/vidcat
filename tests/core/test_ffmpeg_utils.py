@@ -6,6 +6,7 @@ import ffmpeg
 def test_normalize_video(temp_dir, mocker):
     mock_run = mocker.patch('ffmpeg.run')
     mock_input = mocker.patch('ffmpeg.input')
+    mocker.patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='ffmpeg')
     
     input_path = "input.mp4"
     output_path = os.path.join(temp_dir, "output.mp4")
@@ -18,6 +19,7 @@ def test_normalize_video(temp_dir, mocker):
 def test_normalize_video_with_watermark_removal(temp_dir, mocker):
     mock_run = mocker.patch('ffmpeg.run')
     mock_input = mocker.patch('ffmpeg.input')
+    mocker.patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='ffmpeg')
     
     input_path = "input.mp4"
     output_path = os.path.join(temp_dir, "output.mp4")
@@ -30,6 +32,7 @@ def test_normalize_video_with_watermark_removal(temp_dir, mocker):
 def test_concat_videos(temp_dir, mocker):
     mock_run = mocker.patch('ffmpeg.run')
     mock_input = mocker.patch('ffmpeg.input')
+    mocker.patch('imageio_ffmpeg.get_ffmpeg_exe', return_value='ffmpeg')
     
     inputs = ["v1.mp4", "v2.mp4"]
     out_path = os.path.join(temp_dir, "out.mp4")

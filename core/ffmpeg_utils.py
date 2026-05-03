@@ -1,5 +1,6 @@
 import os
 import ffmpeg
+import imageio_ffmpeg
 
 def normalize_video(input_path, output_path, target_width, target_height, remove_watermark=False):
     stream = ffmpeg.input(input_path).filter('scale', target_width, target_height)
@@ -10,7 +11,7 @@ def normalize_video(input_path, output_path, target_width, target_height, remove
         stream = stream.filter('delogo', x=x, y=y, w=200, h=50)
         
     stream = stream.output(output_path).overwrite_output()
-    ffmpeg.run(stream, quiet=True)
+    ffmpeg.run(stream, cmd=imageio_ffmpeg.get_ffmpeg_exe(), quiet=True)
 
 def concat_videos(input_paths, output_path, work_dir, remove_sound=True):
     list_file = os.path.join(work_dir, 'concat_list.txt')
@@ -26,4 +27,4 @@ def concat_videos(input_paths, output_path, work_dir, remove_sound=True):
     else:
         stream = stream.output(output_path, c='copy')
         
-    ffmpeg.run(stream, overwrite_output=True, quiet=True)
+    ffmpeg.run(stream, cmd=imageio_ffmpeg.get_ffmpeg_exe(), overwrite_output=True, quiet=True)
