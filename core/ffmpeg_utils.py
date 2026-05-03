@@ -6,8 +6,8 @@ def normalize_video(input_path, output_path, target_width, target_height, remove
     stream = ffmpeg.input(input_path).filter('scale', target_width, target_height)
     
     if remove_watermark:
-        x = max(0, target_width - 200)
-        y = max(0, target_height - 50)
+        x = max(0, target_width - 200 - 1)
+        y = max(0, target_height - 50 - 1)
         stream = stream.filter('delogo', x=x, y=y, w=200, h=50)
         
     stream = stream.output(output_path).overwrite_output()
