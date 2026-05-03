@@ -15,6 +15,18 @@ def test_normalize_video(temp_dir, mocker):
     mock_input.assert_called_once_with(input_path)
     assert mock_run.called
 
+def test_normalize_video_with_watermark_removal(temp_dir, mocker):
+    mock_run = mocker.patch('ffmpeg.run')
+    mock_input = mocker.patch('ffmpeg.input')
+    
+    input_path = "input.mp4"
+    output_path = os.path.join(temp_dir, "output.mp4")
+    
+    normalize_video(input_path, output_path, 1280, 720, remove_watermark=True)
+    
+    mock_input.assert_called_once_with(input_path)
+    assert mock_run.called
+
 def test_concat_videos(temp_dir, mocker):
     mock_run = mocker.patch('ffmpeg.run')
     mock_input = mocker.patch('ffmpeg.input')

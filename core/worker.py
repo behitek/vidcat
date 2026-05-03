@@ -1,17 +1,22 @@
 import os
 import tempfile
 import shutil
-import cv2
+import ffmpeg
 from PyQt6.QtCore import QThread, pyqtSignal
 from core.ffmpeg_utils import normalize_video, concat_videos
-from core.inpainting import remove_watermark
 
 class ProcessingWorker(QThread):
+    # Signals:
+    # int: group_idx
     group_started = pyqtSignal(int)
+    # int, int: current_frame, total_frames
     frame_progress = pyqtSignal(int, int)
+    # int: group_idx
     group_done = pyqtSignal(int)
+    # int, str: group_idx, error message
     group_failed = pyqtSignal(int, str)
-    all_done = pyqtSignal(int, int) # completed, failed
+    # int, int: completed count, failed count
+    all_done = pyqtSignal(int, int)
     
     def __init__(self, videos, output_dir, group_size, remove_watermark_flag, remove_sound, prefix):
         super().__init__()
@@ -40,10 +45,10 @@ class ProcessingWorker(QThread):
             try:
                 with tempfile.TemporaryDirectory() as temp_dir:
                     # 1. Get target resolution from first video
-                    cap = cv2.VideoCapture(group[0])
-                    target_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    target_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    cap.release()
+                    probe = ffmpeg.probe(group[0])
+                    video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+                    target_w = int(video_stream['width'])
+                    target_h = int(video_stream['height'])
                     
                     processed_paths = []
                     
@@ -51,18 +56,10 @@ class ProcessingWorker(QThread):
                         if self.is_cancelled:
                             break
                             
-                        # Normalize
+                        # Normalize and optionally remove watermark via delogo
                         norm_path = os.path.join(temp_dir, f"norm_{v_idx}.mp4")
-                        normalize_video(video_path, norm_path, target_w, target_h)
-                        current_path = norm_path
-                        
-                        # Watermark
-                        if self.remove_watermark_flag:
-                            wm_path = os.path.join(temp_dir, f"wm_{v_idx}.mp4")
-                            remove_watermark(current_path, wm_path, lambda f, t: self.frame_progress.emit(f, t))
-                            current_path = wm_path
-                            
-                        processed_paths.append(current_path)
+                        normalize_video(video_path, norm_path, target_w, target_h, remove_watermark=self.remove_watermark_flag)
+                        processed_paths.append(norm_path)
                         
                     if self.is_cancelled:
                         break
