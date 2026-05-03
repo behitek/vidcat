@@ -81,8 +81,13 @@ class ProcessingWorker(QThread):
                 
                 completed += 1
                 self.group_done.emit(idx)
-            except Exception as e:
+            except ffmpeg.Error as e:
                 failed += 1
-                self.group_failed.emit(idx, str(e))
+                err_msg = e.stderr.decode('utf8', errors='replace') if e.stderr else str(e)
+                self.group_failed.emit(idx, f"FFmpeg Error:\n{err_msg}")
+            except Exception as e:
+                import traceback
+                failed += 1
+                self.group_failed.emit(idx, f"Lỗi hệ thống:\n{traceback.format_exc()}")
                 
         self.all_done.emit(completed, failed)

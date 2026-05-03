@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog
+import datetime
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication
 from ui.video_list import VideoListWidget
 from core.worker import ProcessingWorker
 
@@ -44,6 +45,16 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.lbl_progress)
         layout.addWidget(self.start_btn)
         
+        # Log Panel
+        self.txt_log = QTextEdit()
+        self.txt_log.setReadOnly(True)
+        self.btn_copy_log = QPushButton("Sao chép nhật ký")
+        self.btn_copy_log.clicked.connect(self.on_copy_log)
+        
+        layout.addWidget(QLabel("Nhật ký (Logs):"))
+        layout.addWidget(self.txt_log)
+        layout.addWidget(self.btn_copy_log)
+        
         self.btn_outdir.clicked.connect(self.on_browse_outdir)
         self.add_btn.clicked.connect(self.on_add_video)
         self.start_btn.clicked.connect(self.on_start)
@@ -61,17 +72,29 @@ class MainWindow(QMainWindow):
             for f in files:
                 self.video_list.add_video(f)
 
+    def log_message(self, msg):
+        tz = datetime.timezone(datetime.timedelta(hours=7))
+        now = datetime.datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+        self.txt_log.append(f"[{now}] {msg}")
+
+    def on_copy_log(self):
+        QApplication.clipboard().setText(self.txt_log.toPlainText())
+
     def on_start(self):
         if self.worker is not None and self.worker.isRunning():
             self.worker.cancel()
             self.start_btn.setEnabled(False)
             self.lbl_progress.setText("Đang hủy...")
+            self.log_message("Người dùng yêu cầu hủy...")
             return
             
         videos = self.video_list.get_videos()
         if not videos:
             return
             
+        self.txt_log.clear()
+        self.log_message(f"Bắt đầu xử lý {len(videos)} video...")
+        
         self.start_btn.setText("Hủy")
         self.add_btn.setEnabled(False)
         self.worker = ProcessingWorker(
@@ -83,11 +106,14 @@ class MainWindow(QMainWindow):
             prefix=self.txt_prefix.text()
         )
         self.worker.group_started.connect(lambda idx: self.lbl_progress.setText(f"Đang xử lý nhóm {idx + 1}..."))
+        self.worker.group_failed.connect(lambda idx, err: self.log_message(f"LỖI Nhóm {idx + 1}:\n{err}"))
         self.worker.all_done.connect(self.on_all_done)
         self.worker.start()
         
     def on_all_done(self, completed, failed):
-        self.lbl_progress.setText(f"Hoàn thành: {completed} thành công, {failed} lỗi")
+        msg = f"Hoàn thành: {completed} thành công, {failed} lỗi"
+        self.lbl_progress.setText(msg)
+        self.log_message(msg)
         self.start_btn.setText("Bắt đầu")
         self.start_btn.setEnabled(True)
         self.add_btn.setEnabled(True)
