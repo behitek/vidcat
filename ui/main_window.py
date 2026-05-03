@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog
 from ui.video_list import VideoListWidget
+from core.worker import ProcessingWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -45,6 +46,8 @@ class MainWindow(QMainWindow):
         
         self.btn_outdir.clicked.connect(self.on_browse_outdir)
         self.add_btn.clicked.connect(self.on_add_video)
+        self.start_btn.clicked.connect(self.on_start)
+        self.worker = None
         
     def on_browse_outdir(self):
         directory = QFileDialog.getExistingDirectory(self, "Chọn thư mục xuất")
@@ -57,3 +60,34 @@ class MainWindow(QMainWindow):
         if files:
             for f in files:
                 self.video_list.add_video(f)
+
+    def on_start(self):
+        if self.worker is not None and self.worker.isRunning():
+            self.worker.cancel()
+            self.start_btn.setEnabled(False)
+            self.lbl_progress.setText("Đang hủy...")
+            return
+            
+        videos = self.video_list.get_videos()
+        if not videos:
+            return
+            
+        self.start_btn.setText("Hủy")
+        self.add_btn.setEnabled(False)
+        self.worker = ProcessingWorker(
+            videos=videos,
+            output_dir=self.lbl_outdir.text(),
+            group_size=self.spin_group.value(),
+            remove_watermark_flag=self.chk_watermark.isChecked(),
+            remove_sound=self.chk_mute.isChecked(),
+            prefix=self.txt_prefix.text()
+        )
+        self.worker.group_started.connect(lambda idx: self.lbl_progress.setText(f"Đang xử lý nhóm {idx + 1}..."))
+        self.worker.all_done.connect(self.on_all_done)
+        self.worker.start()
+        
+    def on_all_done(self, completed, failed):
+        self.lbl_progress.setText(f"Hoàn thành: {completed} thành công, {failed} lỗi")
+        self.start_btn.setText("Bắt đầu")
+        self.start_btn.setEnabled(True)
+        self.add_btn.setEnabled(True)

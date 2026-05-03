@@ -27,3 +27,19 @@ def test_add_video(qtbot, mocker):
     window.add_btn.click()
     
     assert window.video_list.count() == 2
+
+def test_start_worker(qtbot, mocker):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    
+    window.video_list.add_video("1.mp4")
+    window.video_list.add_video("2.mp4")
+    window.lbl_outdir.setText("out_dir")
+    
+    mock_start = mocker.patch('core.worker.ProcessingWorker.start')
+    
+    window.on_start()
+    
+    assert window.worker is not None
+    assert mock_start.called
+    assert window.start_btn.text() == "Hủy"
