@@ -1,6 +1,7 @@
 import os
 import tempfile
 import shutil
+import cv2
 from PyQt6.QtCore import QThread, pyqtSignal
 from core.ffmpeg_utils import normalize_video, concat_videos
 from core.inpainting import remove_watermark
@@ -37,8 +38,38 @@ class ProcessingWorker(QThread):
             self.group_started.emit(idx)
             
             try:
-                # Stub for actual processing
-                pass
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    # 1. Get target resolution from first video
+                    cap = cv2.VideoCapture(group[0])
+                    target_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    target_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    cap.release()
+                    
+                    processed_paths = []
+                    
+                    for v_idx, video_path in enumerate(group):
+                        if self.is_cancelled:
+                            break
+                            
+                        # Normalize
+                        norm_path = os.path.join(temp_dir, f"norm_{v_idx}.mp4")
+                        normalize_video(video_path, norm_path, target_w, target_h)
+                        current_path = norm_path
+                        
+                        # Watermark
+                        if self.remove_watermark_flag:
+                            wm_path = os.path.join(temp_dir, f"wm_{v_idx}.mp4")
+                            remove_watermark(current_path, wm_path, lambda f, t: self.frame_progress.emit(f, t))
+                            current_path = wm_path
+                            
+                        processed_paths.append(current_path)
+                        
+                    if self.is_cancelled:
+                        break
+                        
+                    # Concat
+                    out_path = os.path.join(self.output_dir, f"{self.prefix}_{idx:03d}.mp4")
+                    concat_videos(processed_paths, out_path, temp_dir, self.remove_sound)
                 
                 completed += 1
                 self.group_done.emit(idx)
