@@ -26,5 +26,24 @@ class ProcessingWorker(QThread):
         self.is_cancelled = True
         
     def run(self):
-        # minimal mock for now to pass initialization test
-        pass
+        groups = [self.videos[i:i + self.group_size] for i in range(0, len(self.videos), self.group_size)]
+        completed = 0
+        failed = 0
+        
+        for idx, group in enumerate(groups):
+            if self.is_cancelled:
+                break
+                
+            self.group_started.emit(idx)
+            
+            try:
+                # Stub for actual processing
+                pass
+                
+                completed += 1
+                self.group_done.emit(idx)
+            except Exception as e:
+                failed += 1
+                self.group_failed.emit(idx, str(e))
+                
+        self.all_done.emit(completed, failed)
