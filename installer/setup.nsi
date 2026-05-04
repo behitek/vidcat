@@ -22,6 +22,10 @@ RequestExecutionLevel admin
 !insertmacro MUI_LANGUAGE "Vietnamese"
 
 Section "VidCat (required)" SecCore
+  ; Đóng ứng dụng nếu đang chạy để tránh lỗi ghi đè file
+  nsExec::Exec 'taskkill /F /IM VidCat.exe /T'
+  Sleep 1000
+  
   SetOutPath "$INSTDIR"
   
   # Copy all files from the PyInstaller dist directory
@@ -46,6 +50,10 @@ Section "VidCat (required)" SecCore
 SectionEnd
 
 Section "Uninstall"
+  ; Đóng ứng dụng nếu đang chạy trước khi gỡ cài đặt
+  nsExec::Exec 'taskkill /F /IM VidCat.exe /T'
+  Sleep 1000
+
   Delete "$DESKTOP\VidCat.lnk"
   Delete "$SMPROGRAMS\VidCat\VidCat.lnk"
   RMDir "$SMPROGRAMS\VidCat"

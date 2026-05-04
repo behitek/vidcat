@@ -42,3 +42,5 @@ output/
 *.log
 warn-vidcat.txt
 xref-vidcat.html
+*.exe
+*.zip
