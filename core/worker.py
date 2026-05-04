@@ -21,12 +21,12 @@ class ProcessingWorker(QThread):
     # int, int: completed count, failed count
     all_done = pyqtSignal(int, int)
     
-    def __init__(self, videos, output_dir, group_size, remove_watermark_flag, remove_sound, prefix):
+    def __init__(self, videos, output_dir, group_size, watermark_method, remove_sound, prefix):
         super().__init__()
         self.videos = videos
         self.output_dir = output_dir
         self.group_size = group_size
-        self.remove_watermark_flag = remove_watermark_flag
+        self.watermark_method = watermark_method
         self.remove_sound = remove_sound
         self.prefix = prefix
         self.is_cancelled = False
@@ -50,7 +50,10 @@ class ProcessingWorker(QThread):
                     # 1. Get target resolution from first video using ffmpeg
                     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
                     try:
-                        result = subprocess.run([ffmpeg_exe, "-i", group[0]], stderr=subprocess.PIPE, text=True)
+                        kwargs = {}
+                        if os.name == 'nt':
+                            kwargs['creationflags'] = 0x08000000
+                        result = subprocess.run([ffmpeg_exe, "-i", group[0]], stderr=subprocess.PIPE, text=True, **kwargs)
                         output = result.stderr
                         # Find "Stream #...: Video: ... 1920x1080"
                         match = re.search(r'Video:.*?\s(\d{3,4})x(\d{3,4})', output)
@@ -69,7 +72,7 @@ class ProcessingWorker(QThread):
                             
                         # Normalize and optionally remove watermark via delogo
                         norm_path = os.path.join(temp_dir, f"norm_{v_idx}.mp4")
-                        normalize_video(video_path, norm_path, target_w, target_h, remove_watermark=self.remove_watermark_flag)
+                        normalize_video(video_path, norm_path, target_w, target_h, watermark_method=self.watermark_method, remove_sound=self.remove_sound)
                         processed_paths.append(norm_path)
                         
                     if self.is_cancelled:

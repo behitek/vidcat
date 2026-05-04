@@ -1,5 +1,7 @@
 import datetime
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication, QComboBox, QSystemTrayIcon, QMenu, QStyle
+from PyQt6.QtGui import QColor, QDesktopServices, QAction, QIcon
+from PyQt6.QtCore import QUrl, QEvent, QSettings
 from ui.video_list import VideoListWidget
 from core.worker import ProcessingWorker
 
@@ -13,10 +15,26 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         layout = QVBoxLayout(central)
         
+        # Settings object
+        self.settings = QSettings("VidcatDev", "Vidcat")
+        
         # Input Panel
-        self.add_btn = QPushButton("Thêm video")
+        input_btn_layout = QHBoxLayout()
+        self.add_btn = QPushButton("Thêm video (chọn nhiều)")
+        self.clear_btn = QPushButton("Xóa danh sách")
+        
+        self.info_btn = QPushButton()
+        self.info_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
+        self.info_btn.setToolTip("Hướng dẫn sử dụng")
+        self.info_btn.clicked.connect(self.show_guide)
+        
+        input_btn_layout.addWidget(self.add_btn)
+        input_btn_layout.addWidget(self.clear_btn)
+        input_btn_layout.addStretch()
+        input_btn_layout.addWidget(self.info_btn)
+        
         self.video_list = VideoListWidget()
-        layout.addWidget(self.add_btn)
+        layout.addLayout(input_btn_layout)
         layout.addWidget(self.video_list)
         
         # Settings Panel
@@ -29,8 +47,13 @@ class MainWindow(QMainWindow):
         self.spin_group.setRange(2, 10)
         group_layout.addWidget(self.spin_group)
         
-        self.chk_watermark = QCheckBox("Xóa watermark")
-        self.chk_watermark.setChecked(True)
+        watermark_layout = QHBoxLayout()
+        watermark_layout.addWidget(QLabel("Xóa logo:"))
+        self.combo_watermark = QComboBox()
+        self.combo_watermark.addItem("Zoom-in (Khuyên dùng)", "zoom")
+        self.combo_watermark.addItem("Làm mờ (Delogo)", "delogo")
+        self.combo_watermark.addItem("Không xóa", "none")
+        watermark_layout.addWidget(self.combo_watermark)
         
         prefix_layout = QHBoxLayout()
         prefix_layout.addWidget(QLabel("Tiền tố tên file:"))
@@ -40,12 +63,19 @@ class MainWindow(QMainWindow):
         self.lbl_outdir = QLabel("Chưa chọn thư mục")
         self.btn_outdir = QPushButton("Chọn thư mục xuất")
         
+        self.chk_tray = QCheckBox("Chạy ngầm (Ẩn xuống System Tray)")
+        self.chk_tray.setChecked(False)
+        self.chk_tray.toggled.connect(self.on_tray_toggled)
+        
+        self.load_settings()
+        
         layout.addWidget(self.chk_mute)
         layout.addLayout(group_layout)
-        layout.addWidget(self.chk_watermark)
+        layout.addLayout(watermark_layout)
         layout.addLayout(prefix_layout)
         layout.addWidget(self.lbl_outdir)
         layout.addWidget(self.btn_outdir)
+        layout.addWidget(self.chk_tray)
         
         # Progress Panel
         self.lbl_progress = QLabel("Đang chờ...")
@@ -79,8 +109,147 @@ class MainWindow(QMainWindow):
         
         self.btn_outdir.clicked.connect(self.on_browse_outdir)
         self.add_btn.clicked.connect(self.on_add_video)
+        self.clear_btn.clicked.connect(self.video_list.clear)
         self.start_btn.clicked.connect(self.on_start)
         self.worker = None
+        self.start_time = None
+        
+        self.spin_group.valueChanged.connect(self.update_video_groups)
+        self.video_list.model().rowsInserted.connect(lambda parent, first, last: self.update_video_groups())
+        self.video_list.model().rowsRemoved.connect(lambda parent, first, last: self.update_video_groups())
+        self.video_list.model().rowsMoved.connect(lambda parent, start, end, destination, row: self.update_video_groups())
+        self.video_list.model().layoutChanged.connect(self.update_video_groups)
+        self.lbl_progress.linkActivated.connect(self.on_progress_link_activated)
+
+        # Tray Icon
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(QApplication.instance().windowIcon())
+        
+        tray_menu = QMenu()
+        show_action = QAction("Hiển thị VidCat", self)
+        show_action.triggered.connect(self.show_window)
+        quit_action = QAction("Thoát", self)
+        quit_action.triggered.connect(self.quit_app)
+        
+        tray_menu.addAction(show_action)
+        tray_menu.addAction(quit_action)
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self.on_tray_activated)
+
+    def on_tray_toggled(self, checked):
+        QApplication.instance().setQuitOnLastWindowClosed(not checked)
+        if checked:
+            self.tray_icon.show()
+        else:
+            self.tray_icon.hide()
+
+    def on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger or reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.show_window()
+
+    def show_window(self):
+        self.show()
+        self.activateWindow()
+        self.showNormal()
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.Type.WindowStateChange:
+            if self.isMinimized() and self.chk_tray.isChecked():
+                self.hide()
+                self.tray_icon.showMessage("VidCat", "Ứng dụng đang chạy ngầm", QSystemTrayIcon.MessageIcon.Information, 2000)
+        super().changeEvent(event)
+
+    def closeEvent(self, event):
+        self.save_settings()
+        if self.chk_tray.isChecked():
+            self.hide()
+            self.tray_icon.showMessage("VidCat", "Ứng dụng đang chạy ngầm", QSystemTrayIcon.MessageIcon.Information, 2000)
+            event.ignore()
+        else:
+            event.accept()
+
+    def quit_app(self):
+        self.save_settings()
+        QApplication.instance().quit()
+
+    def load_settings(self):
+        import os
+        self.chk_mute.setChecked(self.settings.value("mute", True, type=bool))
+        self.spin_group.setValue(self.settings.value("group_size", 2, type=int))
+        
+        watermark = self.settings.value("watermark", "zoom", type=str)
+        index = self.combo_watermark.findData(watermark)
+        if index >= 0:
+            self.combo_watermark.setCurrentIndex(index)
+            
+        self.txt_prefix.setText(self.settings.value("prefix", "output", type=str))
+        
+        outdir = self.settings.value("outdir", "Chưa chọn thư mục", type=str)
+        if outdir and outdir != "Chưa chọn thư mục" and os.path.exists(outdir):
+            self.lbl_outdir.setText(outdir)
+            self.start_btn.setEnabled(True)
+            
+        self.chk_tray.setChecked(self.settings.value("tray", False, type=bool))
+
+    def save_settings(self):
+        self.settings.setValue("mute", self.chk_mute.isChecked())
+        self.settings.setValue("group_size", self.spin_group.value())
+        self.settings.setValue("watermark", self.combo_watermark.currentData())
+        self.settings.setValue("prefix", self.txt_prefix.text())
+        self.settings.setValue("outdir", self.lbl_outdir.text())
+        self.settings.setValue("tray", self.chk_tray.isChecked())
+
+    def show_guide(self):
+        from PyQt6.QtWidgets import QMessageBox
+        from PyQt6.QtCore import Qt
+        guide_text = """<h3>Hướng dẫn sử dụng VidCat</h3>
+<p><b>1. Thêm video:</b> Bấm "Thêm video" để chọn danh sách các video cần xử lý.</p>
+<p><b>2. Cấu hình:</b>
+<ul>
+<li><b>Số video mỗi nhóm:</b> Phân loại video thành từng nhóm nhỏ, tự động ghép nối.</li>
+<li><b>Xóa logo:</b><br>
+  - <i>Zoom-in (Khuyên dùng):</i> Cắt bỏ 20% viền ngoài của video để loại bỏ logo ở các góc.<br>
+  - <i>Làm mờ:</i> Xóa mờ vùng logo góc dưới phải và góc trên trái.<br>
+  - <i>Không xóa.</i></li>
+<li><b>Chạy ngầm:</b> Nếu tích chọn, khi thu nhỏ hoặc đóng, app sẽ chạy ẩn dưới System Tray.</li>
+</ul></p>
+<p><b>3. Xuất file:</b> Bấm "Chọn thư mục xuất" rồi nhấn "Bắt đầu". Các video sẽ tự động được xử lý.</p>
+<hr>
+<p><b>Thông tin & Hỗ trợ</b></p>
+<p>Phiên bản: 1.0.0<br>
+Tác giả: Hieu Nguyen<br>
+Liên hệ hỗ trợ: <a href="https://behitek.com/contact">behitek.com/contact</a></p>
+"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Hướng dẫn sử dụng")
+        msg.setTextFormat(Qt.TextFormat.RichText)
+        msg.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        msg.setText(guide_text)
+        msg.exec()
+
+    def update_video_groups(self):
+        group_size = self.spin_group.value()
+        colors = [QColor("#e6f7ff"), QColor("#f6ffed"), QColor("#fff1f0"), QColor("#f9f0ff"), QColor("#fff7e6")]
+        for i in range(self.video_list.count()):
+            item = self.video_list.item(i)
+            group_idx = i // group_size
+            item.setBackground(colors[group_idx % len(colors)])
+            
+            # Add group tag text to filename
+            file_path = item.data(100)
+            if file_path:
+                import os
+                filename = os.path.basename(file_path)
+                item.setText(f"[Nhóm {group_idx + 1}] {filename}")
+
+    def on_progress_link_activated(self, link):
+        import os
+        if os.path.exists(link):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(link))
+        elif link == "open_dir":
+            outdir = self.lbl_outdir.text()
+            if os.path.exists(outdir):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(outdir))
         
     def on_browse_outdir(self):
         directory = QFileDialog.getExistingDirectory(self, "Chọn thư mục xuất")
@@ -89,7 +258,9 @@ class MainWindow(QMainWindow):
             self.start_btn.setEnabled(True)
             
     def on_add_video(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Chọn video", "", "Video files (*.mp4 *.mov *.avi *.mkv)")
+        import os
+        downloads_dir = os.path.expanduser("~/Downloads")
+        files, _ = QFileDialog.getOpenFileNames(self, "Chọn video", downloads_dir, "Video files (*.mp4 *.mov *.avi *.mkv)")
         if files:
             for f in files:
                 self.video_list.add_video(f)
@@ -124,20 +295,38 @@ class MainWindow(QMainWindow):
         videos = self.video_list.get_videos()
         if not videos:
             return
+
+        import os
+        outdir_base = self.lbl_outdir.text()
+        if outdir_base == "Chưa chọn thư mục" or not os.path.exists(outdir_base):
+            self.log_message("LỖI: Vui lòng chọn thư mục xuất.")
+            return
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_outdir = os.path.join(outdir_base, f"run_{timestamp}")
+        try:
+            os.makedirs(run_outdir, exist_ok=True)
+        except Exception as e:
+            self.log_message(f"LỖI: Không thể tạo thư mục {run_outdir}: {e}")
+            return
             
         self.txt_log.clear()
         self.log_message(f"Bắt đầu xử lý {len(videos)} video...")
+        self.log_message(f"Thư mục xuất: {run_outdir}")
+        self.start_time = datetime.datetime.now()
         
         self.start_btn.setText("Hủy")
         self.add_btn.setEnabled(False)
+        self.clear_btn.setEnabled(False)
         self.worker = ProcessingWorker(
             videos=videos,
-            output_dir=self.lbl_outdir.text(),
+            output_dir=run_outdir,
             group_size=self.spin_group.value(),
-            remove_watermark_flag=self.chk_watermark.isChecked(),
+            watermark_method=self.combo_watermark.currentData(),
             remove_sound=self.chk_mute.isChecked(),
             prefix=self.txt_prefix.text()
         )
+        self.worker.run_outdir = run_outdir
         self.worker.group_started.connect(lambda idx: self.lbl_progress.setText(f"Đang xử lý nhóm {idx + 1}..."))
         self.worker.group_failed.connect(lambda idx, err: self.log_message(f"LỖI Nhóm {idx + 1}:\n{err}"))
         self.worker.all_done.connect(self.on_all_done)
@@ -145,8 +334,23 @@ class MainWindow(QMainWindow):
         
     def on_all_done(self, completed, failed):
         msg = f"Hoàn thành: {completed} thành công, {failed} lỗi"
-        self.lbl_progress.setText(msg)
-        self.log_message(msg)
+        
+        if self.start_time:
+            end_time = datetime.datetime.now()
+            duration = end_time - self.start_time
+            total_seconds = int(duration.total_seconds())
+            mins, secs = divmod(total_seconds, 60)
+            time_str = f"{mins} phút {secs} giây" if mins > 0 else f"{secs} giây"
+            log_msg = f"{msg}. Tổng thời gian: {time_str}"
+        else:
+            log_msg = msg
+            
+        run_outdir = getattr(self.worker, 'run_outdir', 'open_dir')
+        href_path = run_outdir.replace('\\', '/') if run_outdir != 'open_dir' else run_outdir
+        
+        self.lbl_progress.setText(f'{msg} (<a href="{href_path}">Mở thư mục xuất</a>)')
+        self.log_message(log_msg)
         self.start_btn.setText("Bắt đầu")
         self.start_btn.setEnabled(True)
         self.add_btn.setEnabled(True)
+        self.clear_btn.setEnabled(True)

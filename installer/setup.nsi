@@ -32,16 +32,17 @@ Section "VidCat (required)" SecCore
   
   # Start Menu shortcut
   CreateDirectory "$SMPROGRAMS\VidCat"
-  CreateShortcut "$SMPROGRAMS\VidCat\VidCat.lnk" "$INSTDIR\VidCat.exe" "" "$INSTDIR\assets\icon.ico"
+  CreateShortcut "$SMPROGRAMS\VidCat\VidCat.lnk" "$INSTDIR\VidCat.exe" "" "$INSTDIR\VidCat.exe" 0
   
   # Desktop shortcut
-  CreateShortcut "$DESKTOP\VidCat.lnk" "$INSTDIR\VidCat.exe" "" "$INSTDIR\assets\icon.ico"
+  CreateShortcut "$DESKTOP\VidCat.lnk" "$INSTDIR\VidCat.exe" "" "$INSTDIR\VidCat.exe" 0
   
   # Registry keys for Add/Remove Programs
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "DisplayName" "VidCat"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "DisplayName" "VidCat 1.0.0"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "UninstallString" '"$INSTDIR\uninstall.exe"'
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "DisplayIcon" "$INSTDIR\assets\icon.ico"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "Publisher" "VidCat Developer"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "DisplayIcon" "$INSTDIR\VidCat.exe"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "Publisher" "Hieu Nguyen | behitek.com"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\VidCat" "DisplayVersion" "1.0.0"
 SectionEnd
 
 Section "Uninstall"
