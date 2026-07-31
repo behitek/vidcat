@@ -4,7 +4,7 @@ from PyQt6.QtGui import QColor, QDesktopServices, QAction, QIcon
 from PyQt6.QtCore import QUrl, QEvent, QSettings
 from ui.video_list import VideoListWidget
 from core.worker import ProcessingWorker
-from core.grouping import group_videos_by_suffix, assign_group_indices
+from core.grouping import group_videos_by_suffix
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -241,7 +241,7 @@ class MainWindow(QMainWindow):
 <p><b>1. Thêm video:</b> Bấm "Thêm video" để chọn danh sách các video cần xử lý.</p>
 <p><b>2. Cấu hình:</b>
 <ul>
-<li><b>Nhóm video:</b> Video được tự động nhóm theo tên file dạng "&lt;số thứ tự&gt;_&lt;hậu tố&gt;" (ví dụ: 01_A.mp4 và 02_A.mp4 sẽ được ghép chung vào nhóm "A", theo đúng thứ tự số). Video không đúng định dạng này sẽ tự thành một nhóm riêng.</li>
+<li><b>Nhóm video:</b> Tên file được tách theo dấu "_", phần đầu là số thứ tự, phần thứ hai là tên nhóm (các phần sau dấu "_" tiếp theo không ảnh hưởng đến việc nhóm). Ví dụ: 01_A.mp4, 02_A_bonus.mp4 đều thuộc nhóm "A" và được ghép theo đúng thứ tự số. Video không đúng định dạng này sẽ tự thành một nhóm riêng.</li>
 <li><b>Số luồng xử lý đồng thời:</b> Cho phép xử lý nhiều nhóm cùng lúc để tăng tốc độ. Số lượng tối đa phụ thuộc vào CPU/RAM của máy.</li>
 <li><b>Xóa logo (Zoom-in):</b> Cắt bỏ một tỉ lệ % viền ngoài của video để loại bỏ logo ở các góc. Chỉnh tỉ lệ % theo nhu cầu (0% = không cắt).</li>
 <li><b>Chạy ngầm:</b> Nếu tích chọn, khi thu nhỏ hoặc đóng, app sẽ chạy ẩn dưới System Tray.</li>
@@ -263,13 +263,30 @@ Liên hệ hỗ trợ: <a href="https://behitek.com/contact">behitek.com/contact
     def update_video_groups(self):
         import os
         videos = self.video_list.get_videos()
-        assignments = assign_group_indices(videos)
+        groups = group_videos_by_suffix(videos)
+
+        # Flatten groups back into a row order where same-group videos sit
+        # next to each other, in group-first-appearance / in-group order.
+        ordered = [(it.index, group_idx, group.suffix)
+                   for group_idx, group in enumerate(groups)
+                   for it in group.items]
+        ordered_indices = [entry[0] for entry in ordered]
+
+        if ordered_indices != list(range(len(videos))):
+            model = self.video_list.model()
+            self.video_list.blockSignals(True)
+            model.blockSignals(True)
+            try:
+                items = [self.video_list.takeItem(0) for _ in range(self.video_list.count())]
+                for new_pos, orig_idx in enumerate(ordered_indices):
+                    self.video_list.insertItem(new_pos, items[orig_idx])
+            finally:
+                model.blockSignals(False)
+                self.video_list.blockSignals(False)
+
         colors = [QColor("#e6f7ff"), QColor("#f6ffed"), QColor("#fff1f0"), QColor("#f9f0ff"), QColor("#fff7e6")]
-        for i in range(self.video_list.count()):
-            if i >= len(assignments):
-                continue
-            item = self.video_list.item(i)
-            group_idx, suffix = assignments[i]
+        for new_pos, (orig_idx, group_idx, suffix) in enumerate(ordered):
+            item = self.video_list.item(new_pos)
             item.setBackground(colors[group_idx % len(colors)])
 
             # Add group tag text to filename

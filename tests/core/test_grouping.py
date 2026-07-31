@@ -10,11 +10,19 @@ from core.grouping import (
 def test_parse_order_suffix_basic():
     assert parse_order_suffix("01_A.mp4") == (1, "A")
 
-def test_parse_order_suffix_suffix_with_underscores():
-    assert parse_order_suffix("01_intro_final.mp4") == (1, "intro_final")
+def test_parse_order_suffix_only_second_part_used_when_multiple_underscores():
+    # Split on every underscore; only the second token is the grouping
+    # suffix - further segments ("final") are ignored for grouping.
+    assert parse_order_suffix("01_intro_final.mp4") == (1, "intro")
 
 def test_parse_order_suffix_no_match_returns_none_order():
     assert parse_order_suffix("weird.mp4") == (None, "weird")
+
+def test_parse_order_suffix_no_underscore_at_all_is_unmatched():
+    assert parse_order_suffix("01.mp4") == (None, "01")
+
+def test_parse_order_suffix_trailing_underscore_with_empty_second_part_is_unmatched():
+    assert parse_order_suffix("01_.mp4") == (None, "01_")
 
 def test_parse_order_suffix_ignores_directory():
     assert parse_order_suffix("C:/videos/02_B.mov") == (2, "B")

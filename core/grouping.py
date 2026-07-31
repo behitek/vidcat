@@ -3,7 +3,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
-_ORDER_SUFFIX_RE = re.compile(r'^(\d+)_(.+)$')
 _UNSAFE_CHARS_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_WIN_NAMES = {"CON", "PRN", "AUX", "NUL",
                         *(f"COM{i}" for i in range(1, 10)),
@@ -30,14 +29,16 @@ class VideoGroup:
 def parse_order_suffix(filename):
     """Parse a filename into (order, suffix).
 
-    Strips the extension and splits the stem at the first underscore. If the
-    text before that underscore is a non-empty run of digits, returns
-    (int(order), remainder). Otherwise returns (None, whole_stem).
+    Strips the extension and splits the stem on every underscore. If the
+    first part is a non-empty run of digits and the second part is non-empty,
+    returns (int(first_part), second_part) - any further underscore-separated
+    segments are ignored for grouping purposes. Otherwise returns
+    (None, whole_stem).
     """
     stem, _ext = os.path.splitext(os.path.basename(filename))
-    match = _ORDER_SUFFIX_RE.match(stem)
-    if match:
-        return int(match.group(1)), match.group(2)
+    parts = stem.split('_')
+    if len(parts) >= 2 and parts[0].isdigit() and parts[1]:
+        return int(parts[0]), parts[1]
     return None, stem
 
 
