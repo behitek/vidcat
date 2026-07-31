@@ -1,9 +1,10 @@
 import datetime
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication, QComboBox, QSystemTrayIcon, QMenu, QStyle
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication, QSystemTrayIcon, QMenu, QStyle
 from PyQt6.QtGui import QColor, QDesktopServices, QAction, QIcon
 from PyQt6.QtCore import QUrl, QEvent, QSettings
 from ui.video_list import VideoListWidget
 from core.worker import ProcessingWorker
+from core.grouping import group_videos_by_suffix, assign_group_indices
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -41,12 +42,6 @@ class MainWindow(QMainWindow):
         self.chk_mute = QCheckBox("Tắt âm thanh")
         self.chk_mute.setChecked(True)
         
-        group_layout = QHBoxLayout()
-        group_layout.addWidget(QLabel("Số video mỗi nhóm:"))
-        self.spin_group = QSpinBox()
-        self.spin_group.setRange(2, 10)
-        group_layout.addWidget(self.spin_group)
-        
         parallel_layout = QHBoxLayout()
         parallel_layout.addWidget(QLabel("Số luồng xử lý đồng thời:"))
         self.spin_parallel = QSpinBox()
@@ -54,13 +49,12 @@ class MainWindow(QMainWindow):
         self.spin_parallel.setRange(1, max_parallel)
         parallel_layout.addWidget(self.spin_parallel)
         
-        watermark_layout = QHBoxLayout()
-        watermark_layout.addWidget(QLabel("Xóa logo:"))
-        self.combo_watermark = QComboBox()
-        self.combo_watermark.addItem("Zoom-in (Khuyên dùng)", "zoom")
-        self.combo_watermark.addItem("Làm mờ (Delogo)", "delogo")
-        self.combo_watermark.addItem("Không xóa", "none")
-        watermark_layout.addWidget(self.combo_watermark)
+        zoom_layout = QHBoxLayout()
+        zoom_layout.addWidget(QLabel("Xóa logo (Zoom-in) - % zoom:"))
+        self.spin_zoom_percent = QSpinBox()
+        self.spin_zoom_percent.setRange(0, 90)
+        self.spin_zoom_percent.setSuffix("%")
+        zoom_layout.addWidget(self.spin_zoom_percent)
         
         prefix_layout = QHBoxLayout()
         prefix_layout.addWidget(QLabel("Tiền tố tên file:"))
@@ -75,9 +69,8 @@ class MainWindow(QMainWindow):
         self.chk_tray.toggled.connect(self.on_tray_toggled)
         
         layout.addWidget(self.chk_mute)
-        layout.addLayout(group_layout)
         layout.addLayout(parallel_layout)
-        layout.addLayout(watermark_layout)
+        layout.addLayout(zoom_layout)
         layout.addLayout(prefix_layout)
         layout.addWidget(self.lbl_outdir)
         layout.addWidget(self.btn_outdir)
@@ -131,7 +124,6 @@ class MainWindow(QMainWindow):
         self.worker = None
         self.start_time = None
         
-        self.spin_group.valueChanged.connect(self.update_video_groups)
         self.video_list.model().rowsInserted.connect(lambda parent, first, last: self.update_video_groups())
         self.video_list.model().rowsRemoved.connect(lambda parent, first, last: self.update_video_groups())
         self.video_list.model().rowsMoved.connect(lambda parent, start, end, destination, row: self.update_video_groups())
@@ -223,14 +215,8 @@ class MainWindow(QMainWindow):
     def load_settings(self):
         import os
         self.chk_mute.setChecked(self.settings.value("mute", True, type=bool))
-        self.spin_group.setValue(self.settings.value("group_size", 2, type=int))
         self.spin_parallel.setValue(self.settings.value("parallel", min(2, self.spin_parallel.maximum()), type=int))
-        
-        watermark = self.settings.value("watermark", "zoom", type=str)
-        index = self.combo_watermark.findData(watermark)
-        if index >= 0:
-            self.combo_watermark.setCurrentIndex(index)
-            
+        self.spin_zoom_percent.setValue(self.settings.value("zoom_percent", 20, type=int))
         self.txt_prefix.setText(self.settings.value("prefix", "output", type=str))
         
         outdir = self.settings.value("outdir", "Chưa chọn thư mục", type=str)
@@ -242,9 +228,8 @@ class MainWindow(QMainWindow):
 
     def save_settings(self):
         self.settings.setValue("mute", self.chk_mute.isChecked())
-        self.settings.setValue("group_size", self.spin_group.value())
         self.settings.setValue("parallel", self.spin_parallel.value())
-        self.settings.setValue("watermark", self.combo_watermark.currentData())
+        self.settings.setValue("zoom_percent", self.spin_zoom_percent.value())
         self.settings.setValue("prefix", self.txt_prefix.text())
         self.settings.setValue("outdir", self.lbl_outdir.text())
         self.settings.setValue("tray", self.chk_tray.isChecked())
@@ -256,12 +241,9 @@ class MainWindow(QMainWindow):
 <p><b>1. Thêm video:</b> Bấm "Thêm video" để chọn danh sách các video cần xử lý.</p>
 <p><b>2. Cấu hình:</b>
 <ul>
-<li><b>Số video mỗi nhóm:</b> Phân loại video thành từng nhóm nhỏ, tự động ghép nối.</li>
+<li><b>Nhóm video:</b> Video được tự động nhóm theo tên file dạng "&lt;số thứ tự&gt;_&lt;hậu tố&gt;" (ví dụ: 01_A.mp4 và 02_A.mp4 sẽ được ghép chung vào nhóm "A", theo đúng thứ tự số). Video không đúng định dạng này sẽ tự thành một nhóm riêng.</li>
 <li><b>Số luồng xử lý đồng thời:</b> Cho phép xử lý nhiều nhóm cùng lúc để tăng tốc độ. Số lượng tối đa phụ thuộc vào CPU/RAM của máy.</li>
-<li><b>Xóa logo:</b><br>
-  - <i>Zoom-in (Khuyên dùng):</i> Cắt bỏ 20% viền ngoài của video để loại bỏ logo ở các góc.<br>
-  - <i>Làm mờ:</i> Xóa mờ vùng logo góc dưới phải và góc trên trái.<br>
-  - <i>Không xóa.</i></li>
+<li><b>Xóa logo (Zoom-in):</b> Cắt bỏ một tỉ lệ % viền ngoài của video để loại bỏ logo ở các góc. Chỉnh tỉ lệ % theo nhu cầu (0% = không cắt).</li>
 <li><b>Chạy ngầm:</b> Nếu tích chọn, khi thu nhỏ hoặc đóng, app sẽ chạy ẩn dưới System Tray.</li>
 </ul></p>
 <p><b>3. Xuất file:</b> Bấm "Chọn thư mục xuất" rồi nhấn "Bắt đầu". Các video sẽ tự động được xử lý.</p>
@@ -279,19 +261,22 @@ Liên hệ hỗ trợ: <a href="https://behitek.com/contact">behitek.com/contact
         msg.exec()
 
     def update_video_groups(self):
-        group_size = self.spin_group.value()
+        import os
+        videos = self.video_list.get_videos()
+        assignments = assign_group_indices(videos)
         colors = [QColor("#e6f7ff"), QColor("#f6ffed"), QColor("#fff1f0"), QColor("#f9f0ff"), QColor("#fff7e6")]
         for i in range(self.video_list.count()):
+            if i >= len(assignments):
+                continue
             item = self.video_list.item(i)
-            group_idx = i // group_size
+            group_idx, suffix = assignments[i]
             item.setBackground(colors[group_idx % len(colors)])
-            
+
             # Add group tag text to filename
             file_path = item.data(100)
             if file_path:
-                import os
                 filename = os.path.basename(file_path)
-                item.setText(f"[Nhóm {group_idx + 1}] {filename}")
+                item.setText(f"[Nhóm: {suffix}] {filename}")
 
     def on_progress_link_activated(self, link):
         import os
@@ -368,8 +353,7 @@ Liên hệ hỗ trợ: <a href="https://behitek.com/contact">behitek.com/contact
         self.start_time = datetime.datetime.now()
         
         # Initialize statuses
-        group_size = self.spin_group.value()
-        n_groups = (len(videos) + group_size - 1) // group_size
+        n_groups = len(group_videos_by_suffix(videos))
         self.group_statuses = ["pending"] * n_groups
         self.final_message = ""
         self.update_progress_ui()
@@ -381,8 +365,7 @@ Liên hệ hỗ trợ: <a href="https://behitek.com/contact">behitek.com/contact
         self.worker = ProcessingWorker(
             videos=videos,
             output_dir=run_outdir,
-            group_size=self.spin_group.value(),
-            watermark_method=self.combo_watermark.currentData(),
+            zoom_percent=self.spin_zoom_percent.value(),
             remove_sound=self.chk_mute.isChecked(),
             prefix=self.txt_prefix.text(),
             n_parallel=self.spin_parallel.value()

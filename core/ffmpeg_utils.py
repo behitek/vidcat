@@ -2,26 +2,17 @@ import os
 import ffmpeg
 import imageio_ffmpeg
 
-def normalize_video(input_path, output_path, target_width, target_height, watermark_method='zoom', remove_sound=True):
+def normalize_video(input_path, output_path, target_width, target_height, zoom_percent: int = 20, remove_sound=True):
     input_node = ffmpeg.input(input_path)
     video_stream = input_node.video
-    
-    if watermark_method == 'zoom':
-        video_stream = video_stream.filter('crop', 'iw*0.8', 'ih*0.8')
-        
+
+    zoom_percent = max(0, min(95, zoom_percent))  # defensive clamp; UI enforces 0-90
+    if zoom_percent > 0:
+        keep_fraction = 1 - (zoom_percent / 100)
+        video_stream = video_stream.filter('crop', f'iw*{keep_fraction}', f'ih*{keep_fraction}')
+
     video_stream = video_stream.filter('scale', target_width, target_height)
-    
-    if watermark_method == 'delogo':
-        w, h = 260, 120
-        # Bottom-right
-        x_br = max(0, target_width - w - 1)
-        y_br = max(0, target_height - h - 1)
-        video_stream = video_stream.filter('delogo', x=x_br, y=y_br, w=w, h=h)
-        # Top-left
-        x_tl = 1
-        y_tl = 1
-        video_stream = video_stream.filter('delogo', x=x_tl, y=y_tl, w=w, h=h)
-        
+
     if remove_sound:
         stream = ffmpeg.output(video_stream, output_path, an=None).overwrite_output()
     else:
