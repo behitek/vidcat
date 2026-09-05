@@ -76,7 +76,7 @@ class ProcessingWorker(QThread):
                     return idx, False, "Cancelled"
 
                 # Concat
-                out_path = os.path.join(self.output_dir, f"{self.prefix}_{output_name}.mp4")
+                out_path = os.path.join(self.output_dir, f"{idx + 1}_{self.prefix}_{output_name}.mp4")
                 concat_videos(processed_paths, out_path, temp_dir, self.remove_sound)
             return idx, True, None
         except ffmpeg.Error as e:
