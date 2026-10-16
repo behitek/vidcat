@@ -2,19 +2,56 @@ import os
 import ffmpeg
 import imageio_ffmpeg
 
-def normalize_video(input_path, output_path, target_width, target_height, zoom_percent: int = 20, remove_sound=True):
+# (x264 crf, x264 preset) per quality level. Lower crf = higher quality / larger file.
+QUALITY_PRESETS = {
+    'fast': (23, 'medium'),
+    'balanced': (20, 'medium'),
+    'high': (17, 'slow'),
+}
+DEFAULT_QUALITY = 'high'
+
+LOGO_METHODS = ('zoom', 'corner', 'delogo')
+DEFAULT_LOGO_METHOD = 'zoom'
+# delogo box (bottom-right), as a fraction of the output frame, plus its distance from the edges
+DELOGO_W_FRAC, DELOGO_H_FRAC, DELOGO_MARGIN_FRAC = 0.22, 0.10, 0.01
+
+def _delogo_box(width, height):
+    """Even-sized bottom-right box that stays >=1px inside the frame (delogo requirement)."""
+    margin = max(2, int(width * DELOGO_MARGIN_FRAC))
+    w = int(width * DELOGO_W_FRAC) // 2 * 2
+    h = int(height * DELOGO_H_FRAC) // 2 * 2
+    x = max(1, width - w - margin)
+    y = max(1, height - h - margin)
+    return x, y, min(w, width - x - 1), min(h, height - y - 1)
+
+def normalize_video(input_path, output_path, target_width, target_height, zoom_percent: int = 20, remove_sound=True, quality: str = DEFAULT_QUALITY, logo_method: str = DEFAULT_LOGO_METHOD):
+    # libx264 + yuv420p rejects odd dimensions
+    target_width, target_height = target_width // 2 * 2, target_height // 2 * 2
+    crf, preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS[DEFAULT_QUALITY])
+    out_kwargs = dict(vcodec='libx264', crf=crf, preset=preset, pix_fmt='yuv420p', movflags='+faststart')
     input_node = ffmpeg.input(input_path)
     video_stream = input_node.video
 
     zoom_percent = max(0, min(95, zoom_percent))  # defensive clamp; UI enforces 0-90
-    if zoom_percent > 0:
+    if logo_method == 'zoom' and zoom_percent > 0:
+        # centered crop, then scale back up
         keep_fraction = 1 - (zoom_percent / 100)
-        video_stream = video_stream.filter('crop', f'iw*{keep_fraction}', f'ih*{keep_fraction}')
+        # round down to even sizes so yuv420p chroma stays aligned
+        video_stream = video_stream.filter('crop', f'trunc(iw*{keep_fraction}/2)*2', f'trunc(ih*{keep_fraction}/2)*2')
+    elif logo_method == 'corner' and zoom_percent > 0:
+        # crop only the right/bottom edges (logo is bottom-right): less upscaling than a centered zoom
+        keep_fraction = 1 - (zoom_percent / 100)
+        video_stream = video_stream.filter('crop', f'trunc(iw*{keep_fraction}/2)*2', f'trunc(ih*{keep_fraction}/2)*2', 0, 0)
 
-    video_stream = video_stream.filter('scale', target_width, target_height)
+    # lanczos keeps upscaled (zoomed) frames noticeably sharper than the default bicubic
+    video_stream = video_stream.filter('scale', target_width, target_height, flags='lanczos')
+
+    if logo_method == 'delogo':
+        x, y, w, h = _delogo_box(target_width, target_height)
+        video_stream = video_stream.filter('delogo', x=x, y=y, w=w, h=h)
 
     if remove_sound:
-        stream = ffmpeg.output(video_stream, output_path, an=None).overwrite_output()
+        stream = ffmpeg.output(video_stream, output_path, an=None, **out_kwargs).overwrite_output()
     else:
         ffprobe_exe = imageio_ffmpeg.get_ffmpeg_exe().replace('ffmpeg', 'ffprobe')
         kwargs = {}
@@ -34,9 +71,9 @@ def normalize_video(input_path, output_path, target_width, target_height, zoom_p
             
         has_audio = any(s.get('codec_type') == 'audio' for s in probe.get('streams', []))
         if has_audio:
-            stream = ffmpeg.output(video_stream, input_node.audio, output_path).overwrite_output()
+            stream = ffmpeg.output(video_stream, input_node.audio, output_path, acodec='aac', audio_bitrate='192k', **out_kwargs).overwrite_output()
         else:
-            stream = ffmpeg.output(video_stream, output_path).overwrite_output()
+            stream = ffmpeg.output(video_stream, output_path, **out_kwargs).overwrite_output()
             
     _run_ffmpeg_quiet(stream, imageio_ffmpeg.get_ffmpeg_exe())
 

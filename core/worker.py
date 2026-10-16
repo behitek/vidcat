@@ -7,7 +7,7 @@ import re
 import imageio_ffmpeg
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt6.QtCore import QThread, pyqtSignal
-from core.ffmpeg_utils import normalize_video, concat_videos
+from core.ffmpeg_utils import normalize_video, concat_videos, DEFAULT_QUALITY, DEFAULT_LOGO_METHOD
 from core.grouping import group_videos_by_suffix, sanitize_suffix, dedupe_suffixes
 
 class ProcessingWorker(QThread):
@@ -23,7 +23,7 @@ class ProcessingWorker(QThread):
     # int, int: completed count, failed count
     all_done = pyqtSignal(int, int)
     
-    def __init__(self, videos, output_dir, zoom_percent, remove_sound, prefix, n_parallel=1):
+    def __init__(self, videos, output_dir, zoom_percent, remove_sound, prefix, n_parallel=1, quality=DEFAULT_QUALITY, logo_method=DEFAULT_LOGO_METHOD):
         super().__init__()
         self.videos = videos
         self.output_dir = output_dir
@@ -31,6 +31,8 @@ class ProcessingWorker(QThread):
         self.remove_sound = remove_sound
         self.prefix = prefix
         self.n_parallel = n_parallel
+        self.quality = quality
+        self.logo_method = logo_method
         self.is_cancelled = False
 
     def cancel(self):
@@ -69,7 +71,7 @@ class ProcessingWorker(QThread):
 
                     # Normalize and zoom-crop to remove watermark
                     norm_path = os.path.join(temp_dir, f"norm_{v_idx}.mp4")
-                    normalize_video(video_path, norm_path, target_w, target_h, zoom_percent=self.zoom_percent, remove_sound=self.remove_sound)
+                    normalize_video(video_path, norm_path, target_w, target_h, zoom_percent=self.zoom_percent, remove_sound=self.remove_sound, quality=self.quality, logo_method=self.logo_method)
                     processed_paths.append(norm_path)
 
                 if self.is_cancelled:

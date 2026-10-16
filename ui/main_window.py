@@ -1,10 +1,24 @@
 import datetime
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication, QSystemTrayIcon, QMenu, QStyle
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QComboBox, QSpinBox, QLineEdit, QLabel, QFileDialog, QTextEdit, QApplication, QSystemTrayIcon, QMenu, QStyle
 from PyQt6.QtGui import QColor, QDesktopServices, QAction, QIcon
 from PyQt6.QtCore import QUrl, QEvent, QSettings
 from ui.video_list import VideoListWidget
 from core.worker import ProcessingWorker
 from core.grouping import group_videos_by_suffix
+from core.ffmpeg_utils import DEFAULT_QUALITY, DEFAULT_LOGO_METHOD
+
+QUALITY_LABELS = [
+    ("fast", "Nhanh (file nhỏ)"),
+    ("balanced", "Cân bằng"),
+    ("high", "Cao (khuyến nghị)"),
+]
+
+# (key, combo label, spinbox label or None if no spinbox, default %)
+LOGO_METHOD_OPTIONS = [
+    ("zoom", "Zoom-in (cắt đều 4 cạnh)", "% zoom:", 20),
+    ("corner", "Cắt góc phải-dưới", "% cắt cạnh phải/dưới:", 10),
+    ("delogo", "Làm mờ logo (giữ nguyên khung hình)", None, 0),
+]
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -50,12 +64,28 @@ class MainWindow(QMainWindow):
         parallel_layout.addWidget(self.spin_parallel)
         
         zoom_layout = QHBoxLayout()
-        zoom_layout.addWidget(QLabel("Xóa logo (Zoom-in) - % zoom:"))
+        zoom_layout.addWidget(QLabel("Xóa logo (góc phải-dưới):"))
+        self.cmb_logo_method = QComboBox()
+        for key, label, _, _ in LOGO_METHOD_OPTIONS:
+            self.cmb_logo_method.addItem(label, key)
+        zoom_layout.addWidget(self.cmb_logo_method)
+        self.lbl_zoom = QLabel()
+        zoom_layout.addWidget(self.lbl_zoom)
         self.spin_zoom_percent = QSpinBox()
         self.spin_zoom_percent.setRange(0, 90)
         self.spin_zoom_percent.setSuffix("%")
         zoom_layout.addWidget(self.spin_zoom_percent)
+        self._logo_pct = {key: default for key, _, _, default in LOGO_METHOD_OPTIONS}
+        self._logo_key = DEFAULT_LOGO_METHOD
+        self.cmb_logo_method.currentIndexChanged.connect(self.on_logo_method_changed)
         
+        quality_layout = QHBoxLayout()
+        quality_layout.addWidget(QLabel("Chất lượng video:"))
+        self.cmb_quality = QComboBox()
+        for key, label in QUALITY_LABELS:
+            self.cmb_quality.addItem(label, key)
+        quality_layout.addWidget(self.cmb_quality)
+
         prefix_layout = QHBoxLayout()
         prefix_layout.addWidget(QLabel("Tiền tố tên file:"))
         self.txt_prefix = QLineEdit("output")
@@ -71,6 +101,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.chk_mute)
         layout.addLayout(parallel_layout)
         layout.addLayout(zoom_layout)
+        layout.addLayout(quality_layout)
         layout.addLayout(prefix_layout)
         layout.addWidget(self.lbl_outdir)
         layout.addWidget(self.btn_outdir)
@@ -212,11 +243,35 @@ class MainWindow(QMainWindow):
         self.save_settings()
         QApplication.instance().quit()
 
+    def on_logo_method_changed(self, _=None):
+        self._logo_pct[self._logo_key] = self.spin_zoom_percent.value()
+        self._logo_key = self.cmb_logo_method.currentData()
+        self._refresh_logo_controls()
+
+    def _refresh_logo_controls(self):
+        _, _, label, _ = next(o for o in LOGO_METHOD_OPTIONS if o[0] == self._logo_key)
+        self.lbl_zoom.setVisible(label is not None)
+        self.spin_zoom_percent.setVisible(label is not None)
+        if label is not None:
+            self.lbl_zoom.setText(label)
+            self.spin_zoom_percent.setValue(self._logo_pct[self._logo_key])
+
     def load_settings(self):
         import os
         self.chk_mute.setChecked(self.settings.value("mute", True, type=bool))
         self.spin_parallel.setValue(self.settings.value("parallel", min(2, self.spin_parallel.maximum()), type=int))
-        self.spin_zoom_percent.setValue(self.settings.value("zoom_percent", 20, type=int))
+        for key, _, _, default in LOGO_METHOD_OPTIONS:
+            # "zoom_percent" is the legacy key from before logo methods existed
+            legacy = "zoom_percent" if key == "zoom" else f"logo_pct_{key}"
+            self._logo_pct[key] = self.settings.value(f"logo_pct_{key}", self.settings.value(legacy, default, type=int), type=int)
+        idx = self.cmb_logo_method.findData(self.settings.value("logo_method", DEFAULT_LOGO_METHOD, type=str))
+        self.cmb_logo_method.blockSignals(True)
+        self.cmb_logo_method.setCurrentIndex(max(idx, 0))
+        self.cmb_logo_method.blockSignals(False)
+        self._logo_key = self.cmb_logo_method.currentData()
+        self._refresh_logo_controls()
+        idx = self.cmb_quality.findData(self.settings.value("quality", DEFAULT_QUALITY, type=str))
+        self.cmb_quality.setCurrentIndex(idx if idx >= 0 else self.cmb_quality.findData(DEFAULT_QUALITY))
         self.txt_prefix.setText(self.settings.value("prefix", "output", type=str))
         
         outdir = self.settings.value("outdir", "Chưa chọn thư mục", type=str)
@@ -229,7 +284,11 @@ class MainWindow(QMainWindow):
     def save_settings(self):
         self.settings.setValue("mute", self.chk_mute.isChecked())
         self.settings.setValue("parallel", self.spin_parallel.value())
-        self.settings.setValue("zoom_percent", self.spin_zoom_percent.value())
+        self._logo_pct[self._logo_key] = self.spin_zoom_percent.value()
+        for key, pct in self._logo_pct.items():
+            self.settings.setValue(f"logo_pct_{key}", pct)
+        self.settings.setValue("logo_method", self.cmb_logo_method.currentData())
+        self.settings.setValue("quality", self.cmb_quality.currentData())
         self.settings.setValue("prefix", self.txt_prefix.text())
         self.settings.setValue("outdir", self.lbl_outdir.text())
         self.settings.setValue("tray", self.chk_tray.isChecked())
@@ -385,7 +444,9 @@ Liên hệ hỗ trợ: <a href="https://behitek.com/contact">behitek.com/contact
             zoom_percent=self.spin_zoom_percent.value(),
             remove_sound=self.chk_mute.isChecked(),
             prefix=self.txt_prefix.text(),
-            n_parallel=self.spin_parallel.value()
+            n_parallel=self.spin_parallel.value(),
+            quality=self.cmb_quality.currentData(),
+            logo_method=self.cmb_logo_method.currentData()
         )
         self.worker.run_outdir = run_outdir
         self.worker.group_started.connect(self.on_group_started)
