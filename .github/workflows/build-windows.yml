@@ -1,0 +1,44 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run core tests
+        run: uv run python -m pytest tests/core -q
+
+      - name: Build app with PyInstaller
+        run: uv run pyinstaller -y vidcat.spec
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build installer with NSIS
+        run: '& "C:\Program Files (x86)\NSIS\makensis.exe" installer\setup.nsi'
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: VidCat_Installer
+          path: "**/VidCat_Installer.exe"
+          if-no-files-found: error
+
+      - name: Upload portable folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: VidCat_portable
+          path: dist/VidCat
