@@ -15,6 +15,7 @@ QUALITY_LABELS = [
 
 # (key, combo label, spinbox label or None if no spinbox, default %)
 LOGO_METHOD_OPTIONS = [
+    ("none", "Không xóa logo", None, 0),
     ("zoom", "Zoom-in (cắt đều 4 cạnh)", "% zoom:", 20),
     ("corner", "Cắt góc phải-dưới", "% cắt cạnh phải/dưới:", 10),
     ("delogo", "Làm mờ logo (giữ nguyên khung hình)", None, 0),

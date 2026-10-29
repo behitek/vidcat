@@ -10,7 +10,7 @@ def test_normalize_video(temp_dir, mocker):
     input_path = "input.mp4"
     output_path = os.path.join(temp_dir, "output.mp4")
 
-    normalize_video(input_path, output_path, 1280, 720)
+    normalize_video(input_path, output_path, 1280, 720, logo_method='zoom')
 
     assert mock_quiet.called
     stream = mock_quiet.call_args[0][0]
@@ -24,7 +24,7 @@ def test_normalize_video_zoom_percent(temp_dir, mocker):
     input_path = "input.mp4"
     output_path = os.path.join(temp_dir, "output.mp4")
 
-    normalize_video(input_path, output_path, 1280, 720, zoom_percent=50)
+    normalize_video(input_path, output_path, 1280, 720, zoom_percent=50, logo_method='zoom')
 
     stream = mock_quiet.call_args[0][0]
     args = ffmpeg.compile(stream, cmd='ffmpeg')
@@ -37,7 +37,7 @@ def test_normalize_video_zoom_percent_zero_is_noop(temp_dir, mocker):
     input_path = "input.mp4"
     output_path = os.path.join(temp_dir, "output.mp4")
 
-    normalize_video(input_path, output_path, 1280, 720, zoom_percent=0)
+    normalize_video(input_path, output_path, 1280, 720, zoom_percent=0, logo_method='zoom')
 
     stream = mock_quiet.call_args[0][0]
     args = ffmpeg.compile(stream, cmd='ffmpeg')
@@ -107,3 +107,9 @@ def test_concat_videos(temp_dir, mocker):
         assert "file 'v2.mp4'" in content
 
     assert mock_quiet.called
+
+
+def test_normalize_video_logo_method_none_adds_no_logo_filter(mocker):
+    cmd = _compiled(mocker, zoom_percent=20, logo_method='none')
+    assert 'crop' not in cmd
+    assert 'delogo' not in cmd

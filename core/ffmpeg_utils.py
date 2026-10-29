@@ -10,8 +10,8 @@ QUALITY_PRESETS = {
 }
 DEFAULT_QUALITY = 'high'
 
-LOGO_METHODS = ('zoom', 'corner', 'delogo')
-DEFAULT_LOGO_METHOD = 'zoom'
+LOGO_METHODS = ('none', 'zoom', 'corner', 'delogo')
+DEFAULT_LOGO_METHOD = 'none'
 # delogo box (bottom-right), as a fraction of the output frame, plus its distance from the edges
 DELOGO_W_FRAC, DELOGO_H_FRAC, DELOGO_MARGIN_FRAC = 0.22, 0.10, 0.01
 
